@@ -1,18 +1,19 @@
-package com.mynfcapp.nfc
+package com.nfcmobile.nfc
 
 import android.app.Activity
 import android.app.PendingIntent
 import android.content.Intent
 import android.nfc.NfcAdapter
+import android.nfc.NdefMessage
 import android.nfc.Tag
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.ReactApplicationContext
-import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.WritableMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import com.nfcmobile.specs.NativeNfcModuleSpec
 
-class NfcModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
+class NfcModule(reactContext: ReactApplicationContext) : NativeNfcModuleSpec(reactContext) {
 
     private var nfcAdapter: NfcAdapter? = NfcAdapter.getDefaultAdapter(reactContext)
 
@@ -26,12 +27,9 @@ class NfcModule(private val reactContext: ReactApplicationContext) : ReactContex
         instance = this
     }
 
-    override fun getName(): String = NAME
-
     @ReactMethod
-    fun startListening() {
-        // Sử dụng reactContext.currentActivity thay vì currentActivity trực tiếp
-        val activity: Activity = reactContext.currentActivity ?: return
+    override fun startListening() {
+        val activity: Activity = reactApplicationContext.currentActivity ?: return
         val adapter = nfcAdapter ?: return
 
         val intent = Intent(activity, activity.javaClass).apply {
@@ -51,9 +49,8 @@ class NfcModule(private val reactContext: ReactApplicationContext) : ReactContex
     }
 
     @ReactMethod
-    fun stopListening() {
-        // Sử dụng reactContext.currentActivity
-        val activity: Activity = reactContext.currentActivity ?: return
+    override fun stopListening() {
+        val activity: Activity = reactApplicationContext.currentActivity ?: return
         val adapter = nfcAdapter ?: return
 
         activity.runOnUiThread {
@@ -63,11 +60,38 @@ class NfcModule(private val reactContext: ReactApplicationContext) : ReactContex
 
     fun handleIntent(intent: Intent) {
         val action = intent.action
+        
+        // 1. Kiem tra va xu ly khi truyen du lieu gia lap tu ADB Command
+        val adbMockText = intent.getStringExtra("android.nfc.extra.TEXT")
+        if (!adbMockText.isNullOrEmpty()) {
+            val payload: WritableMap = Arguments.createMap().apply {
+                putString("id", "MOCK-ADB-TAG-1234")
+                putString("techList", "[android.nfc.tech.Ndef (Simulated)]")
+                putString("payload", adbMockText)
+            }
+            sendEvent("onNfcRead", payload)
+            return
+        }
+
+        // 2. Xu ly khi quet the NFC that (hoac Intent NDEF chuan)
         if (NfcAdapter.ACTION_TAG_DISCOVERED == action ||
             NfcAdapter.ACTION_TECH_DISCOVERED == action ||
             NfcAdapter.ACTION_NDEF_DISCOVERED == action
         ) {
             val tag: Tag? = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG)
+            var payloadContent = ""
+
+            // Doc NDEF Message tu Intent neu co
+            val rawMsgs = intent.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES)
+            if (rawMsgs != null) {
+                for (msg in rawMsgs) {
+                    val ndefMessage = msg as NdefMessage
+                    for (record in ndefMessage.records) {
+                        payloadContent += String(record.payload, Charsets.UTF_8) + "\n"
+                    }
+                }
+            }
+
             tag?.let {
                 val tagId = bytesToHex(it.id)
                 val techList = it.techList.joinToString(prefix = "[", postfix = "]")
@@ -75,6 +99,7 @@ class NfcModule(private val reactContext: ReactApplicationContext) : ReactContex
                 val payload: WritableMap = Arguments.createMap().apply {
                     putString("id", tagId)
                     putString("techList", techList)
+                    putString("payload", payloadContent.trim())
                 }
 
                 sendEvent("onNfcRead", payload)
@@ -93,8 +118,8 @@ class NfcModule(private val reactContext: ReactApplicationContext) : ReactContex
     }
 
     @ReactMethod
-    fun addListener(eventName: String) {}
+    override fun addListener(eventName: String) {}
 
     @ReactMethod
-    fun removeListeners(count: Double) {}
+    override fun removeListeners(count: Double) {}
 }

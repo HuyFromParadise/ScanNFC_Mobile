@@ -1,4 +1,4 @@
-package com.mynfcapp.nfc
+package com.nfcmobile.nfc
 
 import com.facebook.react.TurboReactPackage
 import com.facebook.react.bridge.NativeModule
@@ -21,11 +21,10 @@ class NfcPackage : TurboReactPackage() {
             mapOf(
                 NfcModule.NAME to ReactModuleInfo(
                     NfcModule.NAME,
-                    NfcModule.NAME,
-                    false, // isCxxModule
+                    NfcModule::class.java.name,
                     false, // canOverrideExistingModule
-                    true,  // needsEagerInit
-                    false, // hasConstants
+                    false, // needsEagerInit
+                    false, // isCxxModule
                     true   // isTurboModule
                 )
             )
